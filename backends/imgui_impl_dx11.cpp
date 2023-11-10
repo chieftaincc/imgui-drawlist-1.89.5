@@ -1,49 +1,14 @@
 // dear imgui: Renderer Backend for DirectX11
-// This needs to be used along with a Platform Backend (e.g. Win32)
-
-// Implemented features:
-//  [X] Renderer: User texture binding. Use 'ID3D11ShaderResourceView*' as ImTextureID. Read the FAQ about ImTextureID!
-//  [X] Renderer: Large meshes support (64k+ vertices) with 16-bit indices.
-
-// You can use unmodified imgui_impl_* files in your project. See examples/ folder for examples of using this.
-// Prefer including the entire imgui/ repository into your project (either as a copy or as a submodule), and only build the backends you need.
-// Learn about Dear ImGui:
-// - FAQ                  https://dearimgui.com/faq
-// - Getting Started      https://dearimgui.com/getting-started
-// - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
-// - Introduction, links and more at the top of imgui.cpp
-
-// CHANGELOG
-// (minor and older changes stripped away, please see git history for details)
-//  2022-10-11: Using 'nullptr' instead of 'NULL' as per our switch to C++11.
-//  2021-06-29: Reorganized backend to pull data from a single structure to facilitate usage with multiple-contexts (all g_XXXX access changed to bd->XXXX).
-//  2021-05-19: DirectX11: Replaced direct access to ImDrawCmd::TextureId with a call to ImDrawCmd::GetTexID(). (will become a requirement)
-//  2021-02-18: DirectX11: Change blending equation to preserve alpha in output buffer.
-//  2019-08-01: DirectX11: Fixed code querying the Geometry Shader state (would generally error with Debug layer enabled).
-//  2019-07-21: DirectX11: Backup, clear and restore Geometry Shader is any is bound when calling ImGui_ImplDX10_RenderDrawData. Clearing Hull/Domain/Compute shaders without backup/restore.
-//  2019-05-29: DirectX11: Added support for large mesh (64K+ vertices), enable ImGuiBackendFlags_RendererHasVtxOffset flag.
-//  2019-04-30: DirectX11: Added support for special ImDrawCallback_ResetRenderState callback to reset render state.
-//  2018-12-03: Misc: Added #pragma comment statement to automatically link with d3dcompiler.lib when using D3DCompile().
-//  2018-11-30: Misc: Setting up io.BackendRendererName so it can be displayed in the About Window.
-//  2018-08-01: DirectX11: Querying for IDXGIFactory instead of IDXGIFactory1 to increase compatibility.
-//  2018-07-13: DirectX11: Fixed unreleased resources in Init and Shutdown functions.
-//  2018-06-08: Misc: Extracted imgui_impl_dx11.cpp/.h away from the old combined DX11+Win32 example.
-//  2018-06-08: DirectX11: Use draw_data->DisplayPos and draw_data->DisplaySize to setup projection matrix and clipping rectangle.
-//  2018-02-16: Misc: Obsoleted the io.RenderDrawListsFn callback and exposed ImGui_ImplDX11_RenderDrawData() in the .h file so you can call it yourself.
-//  2018-02-06: Misc: Removed call to ImGui::Shutdown() which is not available from 1.60 WIP, user needs to call CreateContext/DestroyContext themselves.
-//  2016-05-07: DirectX11: Disabling depth-write.
 
 #include "imgui.h"
-#ifndef IMGUI_DISABLE
 #include "imgui_impl_dx11.h"
+#include "imgui_xorstr.h"
+#include "imgui_internal.h"
+#include "imgui_shaders.h"
 
 // DirectX
 #include <stdio.h>
 #include <d3d11.h>
-#include <d3dcompiler.h>
-#ifdef _MSC_VER
-#pragma comment(lib, "d3dcompiler") // Automatically link with d3dcompiler.lib as we are using D3DCompile() below.
-#endif
 
 // DirectX11 data
 struct ImGui_ImplDX11_Data
@@ -65,7 +30,7 @@ struct ImGui_ImplDX11_Data
     int                         VertexBufferSize;
     int                         IndexBufferSize;
 
-    ImGui_ImplDX11_Data()       { memset((void*)this, 0, sizeof(*this)); VertexBufferSize = 5000; IndexBufferSize = 10000; }
+    ImGui_ImplDX11_Data()       { IM_ZEROMEM((void*)this, sizeof(*this)); VertexBufferSize = 5000; IndexBufferSize = 10000; }
 };
 
 struct VERTEX_CONSTANT_BUFFER_DX11
@@ -87,7 +52,7 @@ static void ImGui_ImplDX11_SetupRenderState(ImDrawData* draw_data, ID3D11DeviceC
 
     // Setup viewport
     D3D11_VIEWPORT vp;
-    memset(&vp, 0, sizeof(D3D11_VIEWPORT));
+    IM_ZEROMEM(&vp, sizeof(D3D11_VIEWPORT));
     vp.Width = draw_data->DisplaySize.x;
     vp.Height = draw_data->DisplaySize.y;
     vp.MinDepth = 0.0f;
@@ -134,7 +99,7 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
         if (bd->pVB) { bd->pVB->Release(); bd->pVB = nullptr; }
         bd->VertexBufferSize = draw_data->TotalVtxCount + 5000;
         D3D11_BUFFER_DESC desc;
-        memset(&desc, 0, sizeof(D3D11_BUFFER_DESC));
+        IM_ZEROMEM(&desc, sizeof(D3D11_BUFFER_DESC));
         desc.Usage = D3D11_USAGE_DYNAMIC;
         desc.ByteWidth = bd->VertexBufferSize * sizeof(ImDrawVert);
         desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
@@ -148,7 +113,7 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
         if (bd->pIB) { bd->pIB->Release(); bd->pIB = nullptr; }
         bd->IndexBufferSize = draw_data->TotalIdxCount + 10000;
         D3D11_BUFFER_DESC desc;
-        memset(&desc, 0, sizeof(D3D11_BUFFER_DESC));
+        IM_ZEROMEM(&desc, sizeof(D3D11_BUFFER_DESC));
         desc.Usage = D3D11_USAGE_DYNAMIC;
         desc.ByteWidth = bd->IndexBufferSize * sizeof(ImDrawIdx);
         desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
@@ -168,8 +133,8 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
     for (int n = 0; n < draw_data->CmdListsCount; n++)
     {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-        memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
+        IM_MEMCPY(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
+        IM_MEMCPY(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
         vtx_dst += cmd_list->VtxBuffer.Size;
         idx_dst += cmd_list->IdxBuffer.Size;
     }
@@ -194,7 +159,7 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
             { 0.0f,         0.0f,           0.5f,       0.0f },
             { (R+L)/(L-R),  (T+B)/(B-T),    0.5f,       1.0f },
         };
-        memcpy(&constant_buffer->mvp, mvp, sizeof(mvp));
+        IM_MEMCPY(&constant_buffer->mvp, mvp, sizeof(mvp));
         ctx->Unmap(bd->pVertexConstantBuffer, 0);
     }
 
@@ -320,7 +285,7 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     // Upload texture to graphics system
     {
         D3D11_TEXTURE2D_DESC desc;
-        ZeroMemory(&desc, sizeof(desc));
+        IM_ZEROMEM(&desc, sizeof(desc));
         desc.Width = width;
         desc.Height = height;
         desc.MipLevels = 1;
@@ -341,7 +306,7 @@ static void ImGui_ImplDX11_CreateFontsTexture()
 
         // Create texture view
         D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-        ZeroMemory(&srvDesc, sizeof(srvDesc));
+        IM_ZEROMEM(&srvDesc, sizeof(srvDesc));
         srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = desc.MipLevels;
@@ -357,7 +322,7 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     // (Bilinear sampling is required by default. Set 'io.Fonts->Flags |= ImFontAtlasFlags_NoBakedLines' or 'style.AntiAliasedLinesUseTex = false' to allow point/nearest sampling)
     {
         D3D11_SAMPLER_DESC desc;
-        ZeroMemory(&desc, sizeof(desc));
+        IM_ZEROMEM(&desc, sizeof(desc));
         desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
         desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -386,56 +351,57 @@ bool    ImGui_ImplDX11_CreateDeviceObjects()
 
     // Create the vertex shader
     {
-        static const char* vertexShader =
-            "cbuffer vertexBuffer : register(b0) \
-            {\
-              float4x4 ProjectionMatrix; \
-            };\
-            struct VS_INPUT\
-            {\
-              float2 pos : POSITION;\
-              float4 col : COLOR0;\
-              float2 uv  : TEXCOORD0;\
-            };\
-            \
-            struct PS_INPUT\
-            {\
-              float4 pos : SV_POSITION;\
-              float4 col : COLOR0;\
-              float2 uv  : TEXCOORD0;\
-            };\
-            \
-            PS_INPUT main(VS_INPUT input)\
-            {\
-              PS_INPUT output;\
-              output.pos = mul( ProjectionMatrix, float4(input.pos.xy, 0.f, 1.f));\
-              output.col = input.col;\
-              output.uv  = input.uv;\
-              return output;\
-            }";
+        static const char *vertexShader = IM_XOR("vs"); // DON'T DELETE THIS!
 
-        ID3DBlob* vertexShaderBlob;
-        if (FAILED(D3DCompile(vertexShader, strlen(vertexShader), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vertexShaderBlob, nullptr)))
-            return false; // NB: Pass ID3DBlob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
-        if (bd->pd3dDevice->CreateVertexShader(vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), nullptr, &bd->pVertexShader) != S_OK)
-        {
-            vertexShaderBlob->Release();
+        /*
+        SHADER:
+            "cbuffer vs_buf : register(b0) \
+            {\
+              float4x4 proj_mat; \
+            };\
+            struct vs_inpt\
+            {\
+              float2 pos1 : POSITION;\
+              float4 col1 : COLOR0;\
+              float2 uv1  : TEXCOORD0;\
+            };\
+            \
+            struct ps_inpt\
+            {\
+              float4 pos1 : SV_POSITION;\
+              float4 col1 : COLOR0;\
+              float2 uv1  : TEXCOORD0;\
+            };\
+            \
+            ps_inpt vs_main(vs_inpt inpt)\
+            {\
+              ps_inpt outp;\
+              outp.pos1 = mul( proj_mat, float4(inpt.pos1.xy, 0.f, 1.f));\
+              outp.col1 = inpt.col1;\
+              outp.uv1  = inpt.uv1;\
+              return outp;\
+            }"
+        */
+
+         if (bd->pd3dDevice->CreateVertexShader(
+                ImGui::Shaders::vs, sizeof(ImGui::Shaders::vs),
+                                               nullptr,
+                &bd->pVertexShader) != S_OK) {
             return false;
-        }
+         }
 
         // Create the input layout
         D3D11_INPUT_ELEMENT_DESC local_layout[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT,   0, (UINT)offsetof(ImDrawVert, pos), D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,   0, (UINT)offsetof(ImDrawVert, uv),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, (UINT)offsetof(ImDrawVert, col), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { IM_XOR("POSITION"), 0, DXGI_FORMAT_R32G32_FLOAT,   0, (UINT)IM_OFFSETOF(ImDrawVert, pos), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { IM_XOR("TEXCOORD"), 0, DXGI_FORMAT_R32G32_FLOAT,   0, (UINT)IM_OFFSETOF(ImDrawVert, uv),  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { IM_XOR("COLOR"),    0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, (UINT)IM_OFFSETOF(ImDrawVert, col), D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
-        if (bd->pd3dDevice->CreateInputLayout(local_layout, 3, vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), &bd->pInputLayout) != S_OK)
-        {
-            vertexShaderBlob->Release();
+
+        if (bd->pd3dDevice->CreateInputLayout(local_layout, 3, ImGui::Shaders::vs, sizeof(ImGui::Shaders::vs),
+                &bd->pInputLayout) != S_OK) {
             return false;
         }
-        vertexShaderBlob->Release();
 
         // Create the constant buffer
         {
@@ -451,37 +417,37 @@ bool    ImGui_ImplDX11_CreateDeviceObjects()
 
     // Create the pixel shader
     {
-        static const char* pixelShader =
-            "struct PS_INPUT\
-            {\
-            float4 pos : SV_POSITION;\
-            float4 col : COLOR0;\
-            float2 uv  : TEXCOORD0;\
-            };\
-            sampler sampler0;\
-            Texture2D texture0;\
-            \
-            float4 main(PS_INPUT input) : SV_Target\
-            {\
-            float4 out_col = input.col * texture0.Sample(sampler0, input.uv); \
-            return out_col; \
-            }";
+        static const char *pixelShader = IM_XOR("ps"); // DON'T DELETE THIS!
 
-        ID3DBlob* pixelShaderBlob;
-        if (FAILED(D3DCompile(pixelShader, strlen(pixelShader), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &pixelShaderBlob, nullptr)))
-            return false; // NB: Pass ID3DBlob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
-        if (bd->pd3dDevice->CreatePixelShader(pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize(), nullptr, &bd->pPixelShader) != S_OK)
-        {
-            pixelShaderBlob->Release();
+        /*
+        SHADER:
+            "struct ps_inpt\
+            {\
+            float4 pos1 : SV_POSITION;\
+            float4 col1 : COLOR0;\
+            float2 uv1  : TEXCOORD0;\
+            };\
+            sampler smplr1;\
+            Texture2D txtr1;\
+            \
+            float4 ps_main(ps_inpt inpt) : SV_Target\
+            {\
+            float4 out_color = inpt.col1 * txtr1.Sample(smplr1, inpt.uv1); \
+            return out_color; \
+            }"
+        */
+
+         if (bd->pd3dDevice->CreatePixelShader(
+                ImGui::Shaders::ps, sizeof(ImGui::Shaders::ps), nullptr,
+                &bd->pPixelShader) != S_OK) {
             return false;
-        }
-        pixelShaderBlob->Release();
+         }
     }
 
     // Create the blending setup
     {
         D3D11_BLEND_DESC desc;
-        ZeroMemory(&desc, sizeof(desc));
+        IM_ZEROMEM(&desc, sizeof(desc));
         desc.AlphaToCoverageEnable = false;
         desc.RenderTarget[0].BlendEnable = true;
         desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
@@ -497,7 +463,7 @@ bool    ImGui_ImplDX11_CreateDeviceObjects()
     // Create the rasterizer state
     {
         D3D11_RASTERIZER_DESC desc;
-        ZeroMemory(&desc, sizeof(desc));
+        IM_ZEROMEM(&desc, sizeof(desc));
         desc.FillMode = D3D11_FILL_SOLID;
         desc.CullMode = D3D11_CULL_NONE;
         desc.ScissorEnable = true;
@@ -508,7 +474,7 @@ bool    ImGui_ImplDX11_CreateDeviceObjects()
     // Create depth-stencil State
     {
         D3D11_DEPTH_STENCIL_DESC desc;
-        ZeroMemory(&desc, sizeof(desc));
+        IM_ZEROMEM(&desc, sizeof(desc));
         desc.DepthEnable = false;
         desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
         desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
@@ -551,7 +517,6 @@ bool    ImGui_ImplDX11_Init(ID3D11Device* device, ID3D11DeviceContext* device_co
     // Setup backend capabilities flags
     ImGui_ImplDX11_Data* bd = IM_NEW(ImGui_ImplDX11_Data)();
     io.BackendRendererUserData = (void*)bd;
-    io.BackendRendererName = "imgui_impl_dx11";
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;  // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
 
     // Get factory from device
@@ -585,9 +550,7 @@ void ImGui_ImplDX11_Shutdown()
     if (bd->pFactory)             { bd->pFactory->Release(); }
     if (bd->pd3dDevice)           { bd->pd3dDevice->Release(); }
     if (bd->pd3dDeviceContext)    { bd->pd3dDeviceContext->Release(); }
-    io.BackendRendererName = nullptr;
     io.BackendRendererUserData = nullptr;
-    io.BackendFlags &= ~ImGuiBackendFlags_RendererHasVtxOffset;
     IM_DELETE(bd);
 }
 
@@ -596,10 +559,16 @@ void ImGui_ImplDX11_NewFrame()
     ImGui_ImplDX11_Data* bd = ImGui_ImplDX11_GetBackendData();
     IM_ASSERT(bd != nullptr && "Did you call ImGui_ImplDX11_Init()?");
 
+    /* MY_MOD */
+    UINT viewport_number = 1;
+    D3D11_VIEWPORT viewport{};
+    bd->pd3dDeviceContext->RSGetViewports(&viewport_number, &viewport);
+
+    auto g = ImGui::GetCurrentContext();
+    g->IO.DisplaySize.x = viewport.Width;
+    g->IO.DisplaySize.y = viewport.Height;
+    /* MY_MOD */
+
     if (!bd->pFontSampler)
         ImGui_ImplDX11_CreateDeviceObjects();
 }
-
-//-----------------------------------------------------------------------------
-
-#endif // #ifndef IMGUI_DISABLE

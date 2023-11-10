@@ -489,8 +489,8 @@ int main(int arg, char **argv)
 
    #ifndef STBTT_memcpy
    #include <string.h>
-   #define STBTT_memcpy       memcpy
-   #define STBTT_memset       memset
+   #define STBTT_memcpy       IM_MEMCPY
+   #define STBTT_memset       IM_MEMSET
    #endif
 #endif
 
@@ -1300,10 +1300,10 @@ static int stbtt__isfont(stbtt_uint8 *font)
 {
    // check the version number
    if (stbtt_tag4(font, '1',0,0,0))  return 1; // TrueType 1
-   if (stbtt_tag(font, "typ1"))   return 1; // TrueType with type 1 font -- we don't support this!
-   if (stbtt_tag(font, "OTTO"))   return 1; // OpenType with CFF
+   if (stbtt_tag(font, IM_XOR("typ1")))   return 1; // TrueType with type 1 font -- we don't support this!
+   if (stbtt_tag(font, IM_XOR("OTTO")))   return 1; // OpenType with CFF
    if (stbtt_tag4(font, 0,1,0,0)) return 1; // OpenType 1.0
-   if (stbtt_tag(font, "true"))   return 1; // Apple specification for TrueType fonts
+   if (stbtt_tag(font, IM_XOR("true")))   return 1; // Apple specification for TrueType fonts
    return 0;
 }
 
@@ -1328,7 +1328,7 @@ static int stbtt_GetFontOffsetForIndex_internal(unsigned char *font_collection, 
       return index == 0 ? 0 : -1;
 
    // check if it's a TTC
-   if (stbtt_tag(font_collection, "ttcf")) {
+   if (stbtt_tag(font_collection, IM_XOR("ttcf"))) {
       // version 1?
       if (ttULONG(font_collection+4) == 0x00010000 || ttULONG(font_collection+4) == 0x00020000) {
          stbtt_int32 n = ttLONG(font_collection+8);
@@ -1347,7 +1347,7 @@ static int stbtt_GetNumberOfFonts_internal(unsigned char *font_collection)
       return 1;
 
    // check if it's a TTC
-   if (stbtt_tag(font_collection, "ttcf")) {
+   if (stbtt_tag(font_collection, IM_XOR("ttcf"))) {
       // version 1?
       if (ttULONG(font_collection+4) == 0x00010000 || ttULONG(font_collection+4) == 0x00020000) {
          return ttLONG(font_collection+8);
@@ -1374,7 +1374,7 @@ static int stbtt__get_svg(stbtt_fontinfo *info)
 {
    stbtt_uint32 t;
    if (info->svg < 0) {
-      t = stbtt__find_table(info->data, info->fontstart, "SVG ");
+      t = stbtt__find_table(info->data, info->fontstart, IM_XOR("SVG "));
       if (t) {
          stbtt_uint32 offset = ttULONG(info->data + t + 2);
          info->svg = t + offset;
@@ -1394,14 +1394,14 @@ static int stbtt_InitFont_internal(stbtt_fontinfo *info, unsigned char *data, in
    info->fontstart = fontstart;
    info->cff = stbtt__new_buf(NULL, 0);
 
-   cmap = stbtt__find_table(data, fontstart, "cmap");       // required
-   info->loca = stbtt__find_table(data, fontstart, "loca"); // required
-   info->head = stbtt__find_table(data, fontstart, "head"); // required
-   info->glyf = stbtt__find_table(data, fontstart, "glyf"); // required
-   info->hhea = stbtt__find_table(data, fontstart, "hhea"); // required
-   info->hmtx = stbtt__find_table(data, fontstart, "hmtx"); // required
-   info->kern = stbtt__find_table(data, fontstart, "kern"); // not required
-   info->gpos = stbtt__find_table(data, fontstart, "GPOS"); // not required
+   cmap = stbtt__find_table(data, fontstart, IM_XOR("cmap"));       // required
+   info->loca = stbtt__find_table(data, fontstart, IM_XOR("loca")); // required
+   info->head = stbtt__find_table(data, fontstart, IM_XOR("head")); // required
+   info->glyf = stbtt__find_table(data, fontstart, IM_XOR("glyf")); // required
+   info->hhea = stbtt__find_table(data, fontstart, IM_XOR("hhea")); // required
+   info->hmtx = stbtt__find_table(data, fontstart, IM_XOR("hmtx")); // required
+   info->kern = stbtt__find_table(data, fontstart, IM_XOR("kern")); // not required
+   info->gpos = stbtt__find_table(data, fontstart, IM_XOR("GPOS")); // not required
 
    if (!cmap || !info->head || !info->hhea || !info->hmtx)
       return 0;
@@ -1414,7 +1414,7 @@ static int stbtt_InitFont_internal(stbtt_fontinfo *info, unsigned char *data, in
       stbtt_uint32 cstype = 2, charstrings = 0, fdarrayoff = 0, fdselectoff = 0;
       stbtt_uint32 cff;
 
-      cff = stbtt__find_table(data, fontstart, "CFF ");
+      cff = stbtt__find_table(data, fontstart, IM_XOR("CFF "));
       if (!cff) return 0;
 
       info->fontdicts = stbtt__new_buf(NULL, 0);
@@ -1458,7 +1458,7 @@ static int stbtt_InitFont_internal(stbtt_fontinfo *info, unsigned char *data, in
       info->charstrings = stbtt__cff_get_index(&b);
    }
 
-   t = stbtt__find_table(data, fontstart, "maxp");
+   t = stbtt__find_table(data, fontstart, IM_XOR("maxp"));
    if (t)
       info->numGlyphs = ttUSHORT(data+t+4);
    else
@@ -2645,7 +2645,7 @@ STBTT_DEF void stbtt_GetFontVMetrics(const stbtt_fontinfo *info, int *ascent, in
 
 STBTT_DEF int  stbtt_GetFontVMetricsOS2(const stbtt_fontinfo *info, int *typoAscent, int *typoDescent, int *typoLineGap)
 {
-   int tab = stbtt__find_table(info->data, info->fontstart, "OS/2");
+   int tab = stbtt__find_table(info->data, info->fontstart, IM_XOR("OS/2"));
    if (!tab)
       return 0;
    if (typoAscent ) *typoAscent  = ttSHORT(info->data+tab + 68);
@@ -4832,7 +4832,7 @@ STBTT_DEF const char *stbtt_GetFontNameString(const stbtt_fontinfo *font, int *l
    stbtt_int32 i,count,stringOffset;
    stbtt_uint8 *fc = font->data;
    stbtt_uint32 offset = font->fontstart;
-   stbtt_uint32 nm = stbtt__find_table(fc, offset, "name");
+   stbtt_uint32 nm = stbtt__find_table(fc, offset, IM_XOR("name"));
    if (!nm) return NULL;
 
    count = ttUSHORT(fc+nm+2);
@@ -4903,11 +4903,11 @@ static int stbtt__matches(stbtt_uint8 *fc, stbtt_uint32 offset, stbtt_uint8 *nam
 
    // check italics/bold/underline flags in macStyle...
    if (flags) {
-      hd = stbtt__find_table(fc, offset, "head");
+      hd = stbtt__find_table(fc, offset, IM_XOR("head"));
       if ((ttUSHORT(fc+hd+44) & 7) != (flags & 7)) return 0;
    }
 
-   nm = stbtt__find_table(fc, offset, "name");
+   nm = stbtt__find_table(fc, offset, IM_XOR("name"));
    if (!nm) return 0;
 
    if (flags) {
